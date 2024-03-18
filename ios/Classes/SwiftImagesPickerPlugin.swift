@@ -298,6 +298,13 @@ public class SwiftImagesPickerPlugin: NSObject, FlutterPlugin {
     let urlStr = url.absoluteString;
     let path = (urlStr as NSString).substring(from: 7);
     dir.updateValue(path, forKey: "path");
+      
+    let avasset = AVAsset.init(url: NSURL.fileURL(withPath: path));
+    // 通过asset获取视频总时长（以CMTime表示）
+    let duration = avasset.duration
+    // 将CMTime转换为秒
+    let durationInSeconds = Int(CMTimeGetSeconds(duration))
+    dir.updateValue(durationInSeconds, forKey: "duration");
     
     // 获取视频封面图
     if let thumb = self.getVideoThumbPath(url: path) {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 class ImagesPicker {
@@ -48,6 +49,7 @@ class ImagesPicker {
             path: image["path"],
             size: ((image["size"] ?? 0) / 1024).toDouble(),
             thumbPath: image["thumbPath"],
+            duration: image["duration"] ?? 0,
           );
           return media;
         }).toList();
@@ -96,6 +98,7 @@ class ImagesPicker {
             path: image["path"],
             size: ((image["size"] ?? 0) / 1024).toDouble(),
             thumbPath: image["thumbPath"],
+            duration: image["duration"] ?? 0,
           );
           return media;
         }).toList();
@@ -194,9 +197,12 @@ class Media {
   /// 文件大小
   double size;
 
+  /// 视频时长
+  int? duration;
   Media({
     required this.path,
     this.thumbPath,
     required this.size,
+    this.duration,
   });
 }
