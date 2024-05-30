@@ -82,9 +82,12 @@ public class SwiftImagesPickerPlugin: NSObject, FlutterPlugin {
             manager.requestAVAsset(forVideo: asset, options: options, resultHandler: { avasset,audioMix,info  in
               let videoUrl = avasset as! AVURLAsset;
               let url = videoUrl.url;
-              // TODO: mov to mp4
-              resArr.append(self.resolveVideo(url: url));
-              group.leave();
+              self.resolveVideo(url: url) { videoDetails in
+                    // Handle video details dictionary here
+                    print(videoDetails)
+                resArr.append(videoDetails);
+                group.leave();
+              }
             })
           } else {
             group.leave();
@@ -137,8 +140,11 @@ public class SwiftImagesPickerPlugin: NSObject, FlutterPlugin {
           result(resArr);
         } else if let url = url {
           var resArr = [[String: StringOrInt]]();
-          resArr.append(self.resolveVideo(url: url));
-          result(resArr);
+            self.resolveVideo(url: url) { videoDetails in
+                  // Handle video details dictionary here
+              resArr.append(videoDetails);
+            result(resArr);
+            }
         } else {
           result(nil);
         }
@@ -291,34 +297,70 @@ public class SwiftImagesPickerPlugin: NSObject, FlutterPlugin {
       }
     })
   }
-  
-  private func resolveVideo(url: URL)->[String: StringOrInt] {
-    var dir = [String: StringOrInt]();
     
-    let urlStr = url.absoluteString;
-    let path = (urlStr as NSString).substring(from: 7);
-    dir.updateValue(path, forKey: "path");
-      
-    let avasset = AVAsset.init(url: NSURL.fileURL(withPath: path));
-    // 通过asset获取视频总时长（以CMTime表示）
-    let duration = avasset.duration
-    // 将CMTime转换为秒
-    let durationInSeconds = Int(CMTimeGetSeconds(duration))
-    dir.updateValue(durationInSeconds, forKey: "duration");
-    
-    // 获取视频封面图
-    if let thumb = self.getVideoThumbPath(url: path) {
-      let thumbData = thumb.jpegData(compressionQuality: 1); // 转Data
-      let thumbPath = self.createFile(data: thumbData); // 写入封面图
-      dir.updateValue(thumbPath, forKey: "thumbPath");
+    private func convertMovToMp4(sourceUrl: URL, completion: @escaping (URL?) -> Void) {
+        let avAsset = AVURLAsset(url: sourceUrl, options: nil)
+        guard let exportSession = AVAssetExportSession(
+            asset: avAsset,
+            presetName: AVAssetExportPresetHighestQuality)
+        else {
+            completion(nil)
+            return
+        }
+        
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let convertedFileName = UUID().uuidString + ".mp4"
+        let convertedFileUrl = documentsDirectory.appendingPathComponent(convertedFileName)
+        
+        exportSession.outputURL = convertedFileUrl
+        exportSession.outputFileType = .mp4
+        
+        exportSession.exportAsynchronously {
+            switch exportSession.status {
+            case .completed:
+                completion(convertedFileUrl)
+            default:
+                print("Could not convert video: \(String(describing: exportSession.error))")
+                completion(nil)
+            }
+        }
     }
-    do {
-      let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize;
-      dir.updateValue((size ?? 0) as Int, forKey: "size");
-    } catch {
+    private func resolveVideo(url: URL, completion: @escaping ([String: StringOrInt]) -> Void) {
+        var dir = [String: StringOrInt]();
+        
+        // 调用转换视频的方法转换MOV到MP4
+        convertMovToMp4(sourceUrl: url) { [weak self] convertedUrl in
+            guard let strongSelf = self, let convertedUrl = convertedUrl else {
+                // Handle the conversion failure appropriately
+                return
+            }
+            
+            let path = convertedUrl.path
+            dir.updateValue(path, forKey: "path")
+            
+            let avasset = AVAsset(url: convertedUrl)
+            let duration = avasset.duration
+            let durationInSeconds = Int(CMTimeGetSeconds(duration))
+            dir.updateValue(durationInSeconds, forKey: "duration")
+            
+            if let thumb = strongSelf.getVideoThumbPath(url: path) {
+                let thumbData = thumb.jpegData(compressionQuality: 1)
+                let thumbPath = strongSelf.createFile(data: thumbData)
+                dir.updateValue(thumbPath, forKey: "thumbPath")
+            }
+            
+            do {
+                let size = try convertedUrl.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                dir.updateValue((size ?? 0) as Int, forKey: "size")
+            } catch {
+                print(error)
+            }
+            
+            // Now that all asynchronous operations have finished, call the completion handler with the final directory
+            completion(dir)
+        }
+        
     }
-    return dir;
-  }
   
   
   private func getVideoThumbPath(url: String)->UIImage? {
